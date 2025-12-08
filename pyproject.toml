@@ -1,0 +1,11 @@
+[project]
+name = "ntk"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "equinox>=0.13.2",
+    "jax-meta>=1.0.3",
+    "torchvision>=0.24.1",
+]
