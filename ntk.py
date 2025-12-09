@@ -86,7 +86,7 @@ if __name__ == "__main__":
         test_dataset, batch_size=BATCH_SIZE, shuffle=True
     )
 
-    # group NTK by losses
+    # group NTK by losses jnp.ix_()
 
     for x, y in trainloader:
         eNTK(model, x.numpy(), y.numpy())
