@@ -4,6 +4,7 @@ import equinox as eqx
 import optax
 
 from jax_meta.utils.losses import cross_entropy
+from jax_meta.utils.metrics import accuracy
 from jaxtyping import Array, Float, Int, PyTree, PRNGKeyArray
 
 def make_data(key:PRNGKeyArray, n_samples = 500, mean = jnp.array([1, 1]), sigma = jnp.array([1, 1])):
@@ -20,16 +21,46 @@ def build_binary_dataset(
     key1, key2 = jax.random.split(key)
     y0 = jnp.zeros([n_samples,1]) 
     y1 = jnp.ones([n_samples,1]) 
-    X0 = jnp.hstack([
-         make_data(key1, n_samples, mean=mean0, sigma=sigma0), 
-         y0
-        ])
-    X1 = jnp.hstack([
-        make_data(key1, n_samples, mean=mean1, sigma=sigma1),
-        y1
-    ])
+    X = jnp.vstack([make_data(key1, n_samples, mean=mean0, sigma=sigma0), 
+                   make_data(key2, n_samples, mean=mean1, sigma=sigma1)])
+    y = jnp.vstack([y0, y1])
 
-    return jnp.vstack([X0, X1])
+    key3, key = jax.random.split(key1)
+    perm = jax.random.permutation(key3, n_samples)
+
+    X = X[perm]
+    y = y[perm]
+
+    return X, y
+
+def build_xor_data(key, centers = jnp.array([
+            [-1, -1],
+            [1, -1],
+            [-1, 1],
+            [1, 1]
+        ]), noise = .3, n_samples = 100):
+    cluster_sample_n = n_samples // 4
+    cluster_labels = jnp.array([0, 1, 1, 0])
+    X = []
+    y = []
+    for i in range(4):
+        subkey1, key = jax.random.split(key)
+
+        cluster_sample = centers[i] + jax.random.normal(
+            subkey1, (cluster_sample_n,2)
+        ) * noise
+        X.append(cluster_sample)
+        y.append(jnp.full(cluster_sample_n, cluster_labels[i]))
+
+    X = jnp.vstack(X)
+    y = jnp.concat(y)
+
+    subkey, key = jax.random.split(key)
+    perm = jax.random.permutation(subkey, n_samples)
+    X = X[perm]
+    y = y[perm]
+    return X, y
+
 
 def NTK(
         model: PyTree,
@@ -71,7 +102,8 @@ def loss(
           model: PyTree,
           x: Array, 
           y: Array
-          ):
+          ) -> tuple[Float, Float]:
             pred_y = jax.vmap(model)(x)
             ce = cross_entropy(pred_y, y)
-            return jnp.mean(ce)
+            acc = accuracy(pred_y, y)
+            return (jnp.mean(ce), acc)
