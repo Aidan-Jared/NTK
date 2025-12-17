@@ -55,9 +55,8 @@ def train(
         x = x.numpy()
         y = y.numpy()
         if step % NTK_steps == 0:
-            NTK_m, err = eNTK(model, x, y)
+            NTK_m= eNTK(model, x, y)
             NTKs.append(NTK_m)
-            errs.append(err)
         model, opt_state, train_loss, acc = make_step(model, opt_state, x, y)
         train_losses.append(train_loss)
         train_acc.append(acc)

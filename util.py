@@ -33,12 +33,16 @@ def build_binary_dataset(
 
     return X, y
 
-def build_xor_data(key, centers = jnp.array([
+def build_xor_data(
+          key : PRNGKeyArray, 
+          centers: Array = jnp.array([
             [-1, -1],
             [1, -1],
             [-1, 1],
             [1, 1]
-        ]), noise = .3, n_samples = 100):
+        ]), 
+        noise: Float = .3, 
+        n_samples: Int = 100) -> tuple[Array, Array]:
     cluster_sample_n = n_samples // 4
     cluster_labels = jnp.array([0, 1, 1, 0])
     X = []
@@ -61,6 +65,15 @@ def build_xor_data(key, centers = jnp.array([
     y = y[perm]
     return X, y
 
+def random_poision(
+          key:PRNGKeyArray, 
+          y:Array, 
+          alpha:Float
+          ) -> Array:
+    n = int(y.shape[0] * alpha)
+    poision_idx = jax.random.permutation(key, y.shape[0])[:n]
+    y = y.at[poision_idx].set(jnp.invert(y[poision_idx].astype(bool)).astype(int))
+    return y
 
 def NTK(
         model: PyTree,
@@ -85,18 +98,17 @@ def eNTK(
         model: PyTree,
         x: Array,
         y: Array
-) -> tuple[Array, Array]:
+) -> Array:
     @eqx.filter_jit
     def get_loss_grad(x,y):
-        def loss(x, y):
-            pred_y = model(x)
-            return cross_entropy(pred_y, y)
-        err, grad = eqx.filter_value_and_grad(loss)(x,y)
+        def loss(model, x, y):
+            return cross_entropy(model(x), y)
+        grad = eqx.filter_jacrev(lambda m: loss(m, x, y))(model)
         grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
-        return err, grad_flat
-    err, grad_flat = jax.vmap(get_loss_grad)(x, y)
+        return grad_flat
+    grad_flat = jax.vmap(get_loss_grad)(x, y)
 
-    return jnp.dot(grad_flat, grad_flat.T), err
+    return jnp.dot(grad_flat, grad_flat.T)
 
 def loss(
           model: PyTree,

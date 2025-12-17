@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import optax
 import torch
 import torchvision
-from jaxtyping import Array, Float, Int, PyTree
+from jaxtyping import Array, Float, Int, PyTree, PRNGKeyArray
 from jax_meta.utils.losses import cross_entropy
 
 from cnn import CNN
@@ -53,6 +53,42 @@ def eNTK(
     return jnp.dot(loss_grads, loss_grads.T)
 
 
+def trNTK(
+        model: PyTree,
+        x: Array,
+        y: Array,
+        key : PRNGKeyArray,
+        project_dim: Int = 100
+):
+    
+    N = model.layers[-2].out_features
+    params, static = eqx.partition(model, eqx.is_array)
+    @eqx.filter_jit
+    def get_loss_grad(x,yidx):
+        def loss(params, x, yidx):
+            model = eqx.combine(params, static)
+            pred_y = model(x)
+            return pred_y[yidx]
+        grad = jax.grad(loss)(params, x, yidx)
+        grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
+        return grad_flat
+    
+    yidx = jnp.arange(N)
+
+    grad_class = jax.vmap(get_loss_grad, (None, 0))
+    grads = jax.vmap(grad_class, in_axes=(0, None))(x, yidx)
+    
+    proj_matrix = jax.random.normal(key, (grads.shape[2], project_dim), dtype=jnp.float32)
+    proj_grads = (grads @ proj_matrix)
+
+    kernal = jnp.einsum("ick, jck->ij", proj_grads, proj_grads)
+
+    norms = jnp.sqrt(jnp.einsum("ick,ick->i", proj_grads, proj_grads))
+
+    kernal = kernal / jnp.outer(norms, norms)
+
+    return kernal
+
 if __name__ == "__main__":
     key, subkey = jax.random.split(key, 2)
     model = CNN(subkey)
@@ -89,4 +125,5 @@ if __name__ == "__main__":
     # group NTK by losses jnp.ix_()
 
     for x, y in trainloader:
-        eNTK(model, x.numpy(), y.numpy())
+        key, subkey = jax.random.split(key)
+        trNTK(model, x.numpy(), y.numpy(), subkey)
