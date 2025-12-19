@@ -11,3 +11,5 @@ wheels/
 
 /MNIST
 test.ipynb
+
+*.parquet

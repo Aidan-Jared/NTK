@@ -41,7 +41,7 @@ def build_xor_data(
             [-1, 1],
             [1, 1]
         ]), 
-        noise: Float = .3, 
+        noise: Float = .5, 
         n_samples: Int = 100) -> tuple[Array, Array]:
     cluster_sample_n = n_samples // 4
     cluster_labels = jnp.array([0, 1, 1, 0])
@@ -59,8 +59,11 @@ def build_xor_data(
     X = jnp.vstack(X)
     y = jnp.concat(y)
 
-    subkey, key = jax.random.split(key)
-    perm = jax.random.permutation(subkey, n_samples)
+    subkey1, subkey2 = jax.random.split(key)
+    # noise_idx = jax.random.choice(subkey1, a= n_samples, shape = (int(n_samples * noise),), replace=False)
+    # y = y.at[noise_idx].set(1 - y[noise_idx])
+
+    perm = jax.random.permutation(subkey2, n_samples)
     X = X[perm]
     y = y[perm]
     return X, y
@@ -109,6 +112,47 @@ def eNTK(
     grad_flat = jax.vmap(get_loss_grad)(x, y)
 
     return jnp.dot(grad_flat, grad_flat.T)
+
+def trNTK(
+        model: PyTree,
+        x_i: Array,
+        x_j: Array,
+        key : PRNGKeyArray,
+        project_dim: Int = 100
+):
+    
+    N = 2
+    params, static = eqx.partition(model, eqx.is_array)
+    @eqx.filter_jit
+    def get_loss_grad(x,yidx):
+        def loss(params, x, yidx):
+            model = eqx.combine(params, static)
+            pred_y = model(x)
+            return pred_y[yidx]
+        grad = jax.grad(loss)(params, x, yidx)
+        grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
+        return grad_flat
+    
+    yidx = jnp.arange(N)
+
+    grad_class = jax.vmap(get_loss_grad, (None, 0))
+    grads_class = jax.vmap(grad_class, in_axes=(0, None))
+    grads_i = grads_class(x_i, yidx)
+    grads_j = grads_class(x_j, yidx)
+    
+    proj_matrix = jax.random.normal(key, (grads_i.shape[2], project_dim), dtype=jnp.float32)
+    proj_grads_i = (grads_i @ proj_matrix)
+    proj_grads_j = (grads_j @ proj_matrix)
+
+    kernal = jnp.einsum("ick, jck->ij", proj_grads_i, proj_grads_j)
+
+    norms_i = jnp.sqrt(jnp.einsum("ick,ick->i", proj_grads_i, proj_grads_i))
+    norms_j = jnp.sqrt(jnp.einsum("ick,ick->i", proj_grads_j, proj_grads_j))
+
+    kernal = kernal / jnp.outer(norms_i, norms_j)
+
+    return kernal
+
 
 def loss(
           model: PyTree,

@@ -55,8 +55,8 @@ def eNTK(
 
 def trNTK(
         model: PyTree,
-        x: Array,
-        y: Array,
+        x_i: Array,
+        x_j: Array,
         key : PRNGKeyArray,
         project_dim: Int = 100
 ):
@@ -76,16 +76,20 @@ def trNTK(
     yidx = jnp.arange(N)
 
     grad_class = jax.vmap(get_loss_grad, (None, 0))
-    grads = jax.vmap(grad_class, in_axes=(0, None))(x, yidx)
+    grads_class = jax.vmap(grad_class, in_axes=(0, None))
+    grads_i = grads_class(x_i, yidx)
+    grads_j = grads_class(x_i, yidx)
     
-    proj_matrix = jax.random.normal(key, (grads.shape[2], project_dim), dtype=jnp.float32)
-    proj_grads = (grads @ proj_matrix)
+    proj_matrix = jax.random.normal(key, (grads_i.shape[2], project_dim), dtype=jnp.float32)
+    proj_grads_i = (grads_i @ proj_matrix)
+    proj_grads_j = (grads_j @ proj_matrix)
 
-    kernal = jnp.einsum("ick, jck->ij", proj_grads, proj_grads)
+    kernal = jnp.einsum("ick, jck->ij", proj_grads_i, proj_grads_j)
 
-    norms = jnp.sqrt(jnp.einsum("ick,ick->i", proj_grads, proj_grads))
+    norms_i = jnp.sqrt(jnp.einsum("ick,ick->i", proj_grads_i, proj_grads_i))
+    norms_j = jnp.sqrt(jnp.einsum("ick,ick->i", proj_grads_j, proj_grads_j))
 
-    kernal = kernal / jnp.outer(norms, norms)
+    kernal = kernal / jnp.outer(norms_i, norms_j)
 
     return kernal
 

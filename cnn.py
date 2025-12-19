@@ -40,6 +40,24 @@ class CNN(eqx.Module):
             x = layer(x)
         return x
 
+class MLP(eqx.Module):
+    fc1: eqx.nn.Linear
+    fc2: eqx.nn.Linear
+    fc3: eqx.nn.Linear
+    def __init__(self, keu):
+        subkey1, subkey2, subkey3 = jax.random.split(key, 3)
+        self.fc1 = eqx.nn.Linear(2,64,key=subkey1)
+        self.fc2 = eqx.nn.Linear(64,32,key=subkey2)
+        self.fc3 = eqx.nn.Linear(32,2,key=subkey3)
+    
+    def __call__(self, x):
+        x = jax.nn.relu(self.fc1(x))
+
+        x = jax.nn.relu(self.fc2(x))
+
+        x = jax.nn.sigmoid(self.fc3(x))
+        return x
+
 def cross_entropy(
         y: Int[Array, " batch"],
         pred_y: Float[Array, "batch 10"]
